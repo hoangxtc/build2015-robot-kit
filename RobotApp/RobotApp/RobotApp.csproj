@@ -139,6 +139,16 @@
       <Name>Windows IoT Extensions for the UWP</Name>
     </SDKReference>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\rgbled\source\Variable RGB LED Solution\Windows.Devices.Gpio.FluentApi\Windows.Devices.Gpio.FluentApi.csproj">
+      <Project>{d30683e7-3614-45a3-bf2c-ee51e2c52bec}</Project>
+      <Name>Windows.Devices.Gpio.FluentApi</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\rgbled\source\Variable RGB LED Solution\Windows.Devices.Gpio.SoftPwmSharp\Windows.Devices.Gpio.SoftPwmSharp.csproj">
+      <Project>{a09c85dc-65f8-41d5-9b4b-3c98b0e9b201}</Project>
+      <Name>Windows.Devices.Gpio.SoftPwmSharp</Name>
+    </ProjectReference>
+  </ItemGroup>
   <PropertyGroup Condition=" '$(VisualStudioVersion)' == '' or '$(VisualStudioVersion)' &lt; '14.0' ">
     <VisualStudioVersion>14.0</VisualStudioVersion>
   </PropertyGroup>

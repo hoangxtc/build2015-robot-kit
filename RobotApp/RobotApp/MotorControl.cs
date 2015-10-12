@@ -3,7 +3,10 @@ using Windows.Foundation;
 using System.Diagnostics;
 using Windows.Devices.Gpio;
 using System.Threading;
+using Windows.Devices.Gpio.FluentApi;
+using Windows.Devices.Gpio.SoftPwmSharp;
 using Windows.System.Threading;
+using Microsoft.VisualBasic;
 
 namespace RobotApp
 {
@@ -59,12 +62,16 @@ namespace RobotApp
         private static ulong ticksPerMs;
 
         const int LEFT_PWM_PIN = 5;
+        const int LEFT_DIRECTION_PIN_A = 12;
+        const int LEFT_DIRECTION_PIN_B = 13;
         const int RIGHT_PWM_PIN = 6;
+        const int RIGHT_DIRECTION_PIN_A = 16;
+        const int RIGHT_DIRECTION_PIN_B = 26;
         const int SENSOR_PIN = 13;
         const int ACT_LED_PIN = 47; // rpi2-its-pin47, rpi-its-pin16
         private static GpioController gpioController = null;
-        private static GpioPin leftPwmPin = null;
-        private static GpioPin rightPwmPin = null;
+        /*private static GpioPin leftPwmPin = null;
+        private static GpioPin rightPwmPin = null;*/
         private static GpioPin sensorPin = null;
         private static GpioPin statusLedPin = null;
 
@@ -85,7 +92,7 @@ namespace RobotApp
         {
 
             // Begin pulse (setup for simple Single Speed)
-            ulong pulseTicks = ticksPerMs;
+            /*ulong pulseTicks = ticksPerMs;
             if (motor == MotorIds.Left)
             {
                 if (waitTimeLeft == PulseMs.stop) return;
@@ -111,7 +118,7 @@ namespace RobotApp
 
             // End of pulse
             if (motor == MotorIds.Left) leftPwmPin.Write(GpioPinValue.Low);
-            else rightPwmPin.Write(GpioPinValue.Low);
+            else rightPwmPin.Write(GpioPinValue.Low);*/
         }
 
         static long msLastCheckTime;
@@ -210,11 +217,14 @@ namespace RobotApp
                 gpioController = GpioController.GetDefault();
                 if (null != gpioController)
                 {
-                    leftPwmPin = gpioController.OpenPin(LEFT_PWM_PIN);
-                    leftPwmPin.SetDriveMode(GpioPinDriveMode.Output);
+                    /*leftPwmPin = gpioController.OpenPin(LEFT_PWM_PIN);
+                    leftPwmPin.SetDriveMode(GpioPinDriveMode.Output);*/
 
-                    rightPwmPin = gpioController.OpenPin(RIGHT_PWM_PIN);
-                    rightPwmPin.SetDriveMode(GpioPinDriveMode.Output);
+                    /*rightPwmPin = gpioController.OpenPin(RIGHT_PWM_PIN);
+                    rightPwmPin.SetDriveMode(GpioPinDriveMode.Output);*/
+
+                    var leftMotor = new Motor(LEFT_PWM_PIN, LEFT_DIRECTION_PIN_A, LEFT_DIRECTION_PIN_B);
+                    var rightMotor = new Motor(RIGHT_PWM_PIN, RIGHT_DIRECTION_PIN_A, RIGHT_DIRECTION_PIN_B);
 
                     statusLedPin = gpioController.OpenPin(ACT_LED_PIN);
                     statusLedPin.SetDriveMode(GpioPinDriveMode.Output);
@@ -280,5 +290,89 @@ namespace RobotApp
             return debounceValues[ix];
         }
 
+    }
+
+    public class Motor : IDisposable
+    {
+        private double speed;
+        private bool disposed;
+        private ISoftPwm pwm;
+        private GpioPin direction1;
+        private GpioPin direction2;
+
+        /// <summary>
+        /// The speed of the motor. The sign controls the direction while the magnitude controls the speed (0 is off, 1 is full speed).
+        /// </summary>
+        public double Speed
+        {
+            get
+            {
+                return this.speed;
+            }
+            set
+            {
+                pwm.Value = 0.0;
+
+                this.direction1.Write(speed > 0 ? GpioPinValue.High : GpioPinValue.Low);
+                this.direction2.Write(speed > 0 ? GpioPinValue.Low : GpioPinValue.High);
+
+                this.pwm.Value = Math.Abs(value);
+
+                this.speed = value;
+            }
+        }
+
+        /// <summary>
+        /// Disposes of the object releasing control the pins.
+        /// </summary>
+        public void Dispose() => this.Dispose(true);
+
+        internal Motor(int pwmChannel, int direction1Pin, int direction2Pin)
+        {
+            var gpioController = GpioController.GetDefault();
+
+            this.speed = 0.0;
+            this.pwm = gpioController.OnPin(pwmChannel)
+                                            .AsExclusive()
+                                            .Open()
+                                            .AssignSoftPwm()
+                                            .WithValue(10000)
+                                            //.WithPulseFrequency(100)
+                                            //.WatchPulseWidthChanges((s, args) => { })
+                                            .Start();
+            this.disposed = false;
+
+            this.direction1 = gpioController.OpenPin(direction1Pin);
+            this.direction2 = gpioController.OpenPin(direction2Pin);
+
+            this.direction1.SetDriveMode(GpioPinDriveMode.Output);
+            this.direction2.SetDriveMode(GpioPinDriveMode.Output);
+        }
+
+        /// <summary>
+        /// Stops the motor.
+        /// </summary>
+        public void Stop()
+        {
+            this.pwm.Value = 0.0;
+        }
+
+        /// <summary>
+        /// Disposes of the object releasing control the pins.
+        /// </summary>
+        /// <param name="disposing">Whether or not this method is called from Dispose().</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!this.disposed)
+            {
+                if (disposing)
+                {
+                    this.direction1.Dispose();
+                    this.direction2.Dispose();
+                }
+
+                this.disposed = true;
+            }
+        }
     }
 }
