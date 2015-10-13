@@ -9,7 +9,7 @@ namespace RobotApp
 {
     public sealed partial class MainPage : Page
     {
-        private static String defaultHostName = "tak-hp-laptop";
+        private static String defaultHostName = "Home-PC";
         public static String serverHostName = defaultHostName; // read from config file
         public static bool isRobot = true; // determined by existence of hostName
 
