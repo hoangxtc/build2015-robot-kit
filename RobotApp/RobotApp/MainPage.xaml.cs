@@ -90,6 +90,6 @@ namespace RobotApp
             NetworkCmd.NetworkInit(serverHostName);
             MotorCtrl.MotorsInit();
             Controllers.SetRobotDirection(Controllers.CtrlCmds.Stop, (int)Controllers.CtrlSpeeds.Max);
-        }
+        }        
     }
 }

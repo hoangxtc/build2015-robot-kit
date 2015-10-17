@@ -220,37 +220,36 @@ namespace RobotApp
             try
             {
                 _gpioController = GpioController.GetDefault();
-                if (null != _gpioController)
+                if (null == _gpioController) return;
+
+                _leftMotor = new Motor(pwmChannel => _gpioController.OnPin(pwmChannel)
+                    .AsExclusive()
+                    .Open()
+                    .AssignSoftPwm(), LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2
+                    //.WithValue(10000)
+                    //.WithPulseFrequency(100)
+                    //.WatchPulseWidthChanges((s, args) => { })
+                    );
+                _rightMotor = new Motor(pwmChannel => _gpioController.OnPin(pwmChannel)
+                    .AsExclusive()
+                    .Open()
+                    .AssignSoftPwm(), RightPwmPin, RightDirectionPin1, RightDirectionPin2
+                    );
+
+                _statusLedPin = _gpioController.OpenPin(ActLedPin);
+                _statusLedPin.SetDriveMode(GpioPinDriveMode.Output);
+                _statusLedPin.Write(GpioPinValue.Low);
+
+                _sensorPin = _gpioController.OpenPin(SensorPin);
+                _sensorPin.SetDriveMode(GpioPinDriveMode.Input);
+                _sensorPin.ValueChanged += (s, e) =>
                 {
-                    _leftMotor = new Motor(pwmChannel => _gpioController.OnPin(pwmChannel)
-                        .AsExclusive()
-                        .Open()
-                        .AssignSoftPwm(), LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2
-                        //.WithValue(10000)
-                        //.WithPulseFrequency(100)
-                        //.WatchPulseWidthChanges((s, args) => { })
-                        );
-                    _rightMotor = new Motor(pwmChannel => _gpioController.OnPin(pwmChannel)
-                        .AsExclusive()
-                        .Open()
-                        .AssignSoftPwm()
-                        , RightPwmPin, RightDirectionPin1, RightDirectionPin2);
+                    var pinValue = _sensorPin.Read();
+                    _statusLedPin.Write(pinValue);
+                    _isBlockSensed = (e.Edge == GpioPinEdge.RisingEdge);
+                };
 
-                    _statusLedPin = _gpioController.OpenPin(ActLedPin);
-                    _statusLedPin.SetDriveMode(GpioPinDriveMode.Output);
-                    _statusLedPin.Write(GpioPinValue.Low);
-
-                    _sensorPin = _gpioController.OpenPin(SensorPin);
-                    _sensorPin.SetDriveMode(GpioPinDriveMode.Input);
-                    _sensorPin.ValueChanged += (s, e) =>
-                    {
-                        var pinValue = _sensorPin.Read();
-                        _statusLedPin.Write(pinValue);
-                        _isBlockSensed = (e.Edge == GpioPinEdge.RisingEdge);
-                    };
-
-                    _gpioInitialized = true;
-                }
+                _gpioInitialized = true;
             }
             catch (Exception ex)
             {
@@ -303,6 +302,16 @@ namespace RobotApp
             _debounceLast[ix] = curValue;
             return _debounceValues[ix];
         }
+
+        public static int SpeedMotorLeft
+        {            
+            set { if (_leftMotor != null) _leftMotor.Speed = value; }
+        }
+
+        public static int SpeedMotorRight
+        {
+            set { if (_rightMotor != null) _rightMotor.Speed = value; }
+        }
     }
 
     public class Motor : IDisposable
@@ -324,8 +333,8 @@ namespace RobotApp
             {
                 _pwm.Value = 0.0;
 
-                _directionPin1.Write(_speed > 0 ? GpioPinValue.High : GpioPinValue.Low);
-                _directionPin2.Write(_speed > 0 ? GpioPinValue.Low : GpioPinValue.High);
+                _directionPin1.Write(value > 0 ? GpioPinValue.High : GpioPinValue.Low);
+                _directionPin2.Write(value > 0 ? GpioPinValue.Low : GpioPinValue.High);
 
                 _pwm.Value = Math.Abs(value);
 

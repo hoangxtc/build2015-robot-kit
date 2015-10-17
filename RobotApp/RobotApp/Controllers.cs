@@ -250,50 +250,72 @@ namespace RobotApp
         public static long msLastDirectionTime;
         public static CtrlCmds lastSetCmd;
         public static void SetRobotDirection(CtrlCmds cmd, int speed)
-        {
+        {            
+            if (speed < (int) CtrlSpeeds.Min) speed = (int) CtrlSpeeds.Min;
+            if (speed > (int) CtrlSpeeds.Max) speed = (int) CtrlSpeeds.Max;
+
+            const int minus1 = -1;
+            const int zero = 0;
+            int speedMotorLeft;
+            int speedMotorRight;
             switch (cmd)
             {
                 case CtrlCmds.Forward:
+                    speedMotorLeft = speed;
+                    speedMotorRight = speed;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Ms2;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Ms1;
                     break;
                 case CtrlCmds.Backward:
+                    speedMotorLeft = speed * minus1;
+                    speedMotorRight = speed * minus1;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Ms1;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Ms2;
                     break;
                 case CtrlCmds.Left:
+                    speedMotorLeft = speed * minus1;
+                    speedMotorRight = speed;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Ms1;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Ms1;
                     break;
                 case CtrlCmds.Right:
+                    speedMotorLeft = speed;
+                    speedMotorRight = speed * minus1;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Ms2;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Ms2;
                     break;
                 case CtrlCmds.ForwardLeft:
+                    speedMotorLeft = zero;
+                    speedMotorRight = speed;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Stop;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Ms1;
                     break;
                 case CtrlCmds.ForwardRight:
+                    speedMotorLeft = speed;
+                    speedMotorRight = zero;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Ms2;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Stop;
                     break;
                 case CtrlCmds.BackLeft:
+                    speedMotorLeft = zero;
+                    speedMotorRight = speed * minus1;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Stop;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Ms2;
                     break;
                 case CtrlCmds.BackRight:
+                    speedMotorLeft = speed * minus1;
+                    speedMotorRight = zero;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Ms1;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Stop;
                     break;
                 default:
                 case CtrlCmds.Stop:
+                    speedMotorLeft = zero;
+                    speedMotorRight = zero;
                     MotorCtrl.WaitTimeLeft = MotorCtrl.PulseMs.Stop;
                     MotorCtrl.WaitTimeRight = MotorCtrl.PulseMs.Stop;
                     break;
             }
-            if (speed < (int) CtrlSpeeds.Min) speed = (int) CtrlSpeeds.Min;
-            if (speed > (int) CtrlSpeeds.Max) speed = (int) CtrlSpeeds.Max;
-            MotorCtrl.SpeedValue = speed;
 
             dumpOnDiff(cmd.ToString());
 
@@ -302,6 +324,12 @@ namespace RobotApp
                 String sendStr = "[" + (Convert.ToInt32(cmd)).ToString() + "]:" + cmd.ToString();
                 NetworkCmd.SendCommandToRobot(sendStr);
             }
+            else
+            {
+                MotorCtrl.SpeedMotorLeft = speedMotorLeft;
+                MotorCtrl.SpeedMotorRight = speedMotorRight;
+            }
+
             msLastDirectionTime = MainPage.stopwatch.ElapsedMilliseconds;
             lastSetCmd = cmd;
         }
