@@ -2,10 +2,10 @@
 using System.Diagnostics;
 using System.Threading;
 using Windows.Devices.Gpio;
-using Windows.Devices.Gpio.FluentApi;
-using Windows.Devices.Gpio.SoftPwmSharp;
 using Windows.Foundation;
 using Windows.System.Threading;
+using Porrey.Uwp.IoT;
+using Porrey.Uwp.IoT.FluentApi;
 
 namespace RobotApp
 {
