@@ -1,11 +1,16 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Windows.Devices.Gpio;
+using Windows.Devices.Pwm;
+using Windows.Devices.Pwm.Provider;
 using Windows.Foundation;
 using Windows.System.Threading;
+using Microsoft.IoT.DeviceCore.Pwm;
 using Porrey.Uwp.IoT;
 using Porrey.Uwp.IoT.FluentApi;
+using SoftPwm = Microsoft.IoT.Devices.Pwm.SoftPwm;
 
 namespace RobotApp
 {
@@ -15,6 +20,51 @@ namespace RobotApp
     /// </summary>
     internal class MotorCtrl
     {
+        public enum PulseMs
+        {
+            Stop = -1,
+            Ms1 = 0,
+            Ms2 = 2
+        } // values selected for thread-safety
+        private const int LeftPwmPin = 5;
+        private const int RightPwmPin = 6;
+        private const int GripperPwmPin = 19;
+        private const int LeftDirectionPin1 = 13;
+        private const int LeftDirectionPin2 = 12;
+        private const int RightDirectionPin1 = 16;
+        private const int RightDirectionPin2 = 26;
+        private const int SensorPin = 13;
+        private const int ActLedPin = 47; // rpi2-its-pin47, rpi-its-pin16
+        private const int MaxDebs = 10;
+        private static IAsyncAction _workItemThread;
+        private static ulong _ticksPerMs;
+        private static GpioController _gpioController;
+        private static GpioPin _sensorPin;
+        private static GpioPin _statusLedPin;
+        public static PulseMs WaitTimeLeft = PulseMs.Stop;
+        public static PulseMs WaitTimeRight = PulseMs.Stop;
+        public static int SpeedValue = 10000;
+        private static long _msLastCheckTime;
+        private static bool _isBlockSensed;
+        private static bool _lastIsBlockSensed;
+        private static bool _gpioInitialized;
+        private static int[] _debounceValues;
+        private static int[] _debounceCounts;
+        private static int[] _debounceLast;
+        private static Motor _leftMotor;
+        private static Motor _rightMotor;
+        private static Servo _servo;
+
+        public static int SpeedMotorLeft
+        {
+            set { if (_leftMotor != null) _leftMotor.Speed = value; }
+        }
+
+        public static int SpeedMotorRight
+        {
+            set { if (_rightMotor != null) _rightMotor.Speed = value; }
+        }
+
         public static void MotorsInit()
         {
             DebounceInit();
@@ -56,39 +106,6 @@ namespace RobotApp
                 }, WorkItemPriority.High);
         }
 
-        private static IAsyncAction _workItemThread;
-        private static ulong _ticksPerMs;
-
-        private const int LeftPwmPin = 5;
-        private const int RightPwmPin = 6;
-        private const int LeftDirectionPin1 = 13;
-        private const int LeftDirectionPin2 = 12;
-        private const int RightDirectionPin1 = 16;
-        private const int RightDirectionPin2 = 26;
-        private const int SensorPin = 13;
-        private const int ActLedPin = 47; // rpi2-its-pin47, rpi-its-pin16
-        private static GpioController _gpioController;        
-        private static GpioPin _sensorPin;
-        private static GpioPin _statusLedPin;
-
-        private enum MotorIds
-        {
-            Left,
-            Right
-        };
-
-        public enum PulseMs
-        {
-            Stop = -1,
-            Ms1 = 0,
-            Ms2 = 2
-        } // values selected for thread-safety
-        public static PulseMs WaitTimeLeft = PulseMs.Stop;
-        public static PulseMs WaitTimeRight = PulseMs.Stop;
-
-        public static int SpeedValue = 10000;
-
-
         /// <summary>
         ///     Generate a single motor pulse wave for given servo motor (High for 1 to 2ms, duration for 20ms).
         ///     motor value denotes which moter to send pulse to.
@@ -125,10 +142,6 @@ namespace RobotApp
             if (motor == MotorIds.Left) leftPwmPin.Write(GpioPinValue.Low);
             else rightPwmPin.Write(GpioPinValue.Low);*/
         }
-
-        private static long _msLastCheckTime;
-        private static bool _isBlockSensed;
-        private static bool _lastIsBlockSensed;
 
         /// <summary>
         ///     CheckSystem - monitor for priority robot motion conditions (dead stick, or contact with object, etc.)
@@ -213,8 +226,6 @@ namespace RobotApp
             Controllers.SetRobotDirection(Controllers.CtrlCmds.Stop, (int) Controllers.CtrlSpeeds.Max);
         }
 
-        private static bool _gpioInitialized;
-
         private static void GpioInit()
         {
             try
@@ -236,6 +247,25 @@ namespace RobotApp
                     .AssignSoftPwm(), RightPwmPin, RightDirectionPin1, RightDirectionPin2
                     );
 
+                _servo = new Servo(pin =>
+                {
+                    // Create PWM manager
+                    var pwmManager = new PwmProviderManager();
+
+                    // Add providers ~ pwmControllers
+                    pwmManager.Providers.Add(new SoftPwm());
+
+                    // Get the well-known controller collection back
+                    var pwmControllers = pwmManager.GetControllersAsync().GetAwaiter().GetResult();
+
+                    // Using the first PWM controller
+                    var controller = pwmControllers.First();
+
+                    // Set desired frequency
+                    controller.SetDesiredFrequency(50);
+                    return controller.OpenPin(pin);
+                }, GripperPwmPin);                
+
                 _statusLedPin = _gpioController.OpenPin(ActLedPin);
                 _statusLedPin.SetDriveMode(GpioPinDriveMode.Output);
                 _statusLedPin.Write(GpioPinValue.Low);
@@ -256,14 +286,6 @@ namespace RobotApp
                 Debug.WriteLine("ERROR: GpioInit failed - " + ex.Message);
             }
         }
-
-        private const int MaxDebs = 10;
-        private static int[] _debounceValues;
-        private static int[] _debounceCounts;
-        private static int[] _debounceLast;
-
-        private static Motor _leftMotor;
-        private static Motor _rightMotor;
 
         private static void DebounceInit()
         {
@@ -303,24 +325,37 @@ namespace RobotApp
             return _debounceValues[ix];
         }
 
-        public static int SpeedMotorLeft
-        {            
-            set { if (_leftMotor != null) _leftMotor.Speed = value; }
-        }
-
-        public static int SpeedMotorRight
+        private enum MotorIds
         {
-            set { if (_rightMotor != null) _rightMotor.Speed = value; }
-        }
+            Left,
+            Right
+        };
     }
 
     public class Motor : IDisposable
     {
-        private double _speed;
-        private bool _disposed;
-        private readonly ISoftPwm _pwm;
         private readonly GpioPin _directionPin1;
         private readonly GpioPin _directionPin2;
+        private readonly ISoftPwm _pwm;
+        private bool _disposed;
+        private double _speed;
+
+        internal Motor(Func<int, ISoftPwm> funcPwm, int pwmPin, int direction1Pin, int direction2Pin)
+        {
+            _speed = 0.0;
+            _disposed = false;
+
+            var gpioController = GpioController.GetDefault();
+            _directionPin1 = gpioController.OpenPin(direction1Pin);
+            _directionPin2 = gpioController.OpenPin(direction2Pin);
+
+            _directionPin1.SetDriveMode(GpioPinDriveMode.Output);
+            _directionPin2.SetDriveMode(GpioPinDriveMode.Output);
+
+            _pwm = funcPwm(pwmPin);
+            _pwm.MaximumValue = 10000;
+            _pwm.Start();
+        }
 
         /// <summary>
         ///     The speed of the motor. The sign controls the direction while the magnitude controls the speed (0 is off, 1 is full
@@ -346,23 +381,6 @@ namespace RobotApp
         ///     Disposes of the object releasing control the pins.
         /// </summary>
         public void Dispose() => Dispose(true);
-
-        internal Motor(Func<int, ISoftPwm> funcPwm, int pwmChannel, int direction1Pin, int direction2Pin)
-        {
-            _speed = 0.0;
-            _disposed = false;
-
-            var gpioController = GpioController.GetDefault();
-            _directionPin1 = gpioController.OpenPin(direction1Pin);
-            _directionPin2 = gpioController.OpenPin(direction2Pin);
-
-            _directionPin1.SetDriveMode(GpioPinDriveMode.Output);
-            _directionPin2.SetDriveMode(GpioPinDriveMode.Output);
-
-            _pwm = funcPwm(pwmChannel);
-            _pwm.MaximumValue = 10000;
-            _pwm.Start();
-        }
 
 /*
         /// <summary>
@@ -397,5 +415,108 @@ namespace RobotApp
 
             _disposed = true;
         }
+    }
+
+    public class Servo
+    {
+        private readonly PwmPin _pwmPin;
+        private bool _limitsSet;
+        private double _maxAngle;
+        private double _minAngle;
+        private double _offset;
+        private double _position;
+        private double _scale;
+
+        internal Servo(Func<int, PwmPin> funcPwmPin, int pinNumber)
+        {
+            _pwmPin = funcPwmPin(pinNumber);
+            _position = 0.0;
+            _limitsSet = false;
+            _pwmPin.Start();
+        }
+
+        /// <summary>
+        ///     The current position of the servo between the minimumAngle and maximumAngle passed to SetLimits.
+        /// </summary>
+        public double Position
+        {
+            get { return _position; }
+            set
+            {
+                if (!_limitsSet) throw new InvalidOperationException($"You must call {nameof(SetLimits)} first.");
+                if (value < _minAngle || value > _maxAngle) throw new ArgumentOutOfRangeException(nameof(value));
+
+                _position = value;
+                _pwmPin.SetActiveDutyCyclePercentage(_scale * value + _offset);
+            }
+        }
+
+        /// <summary>
+        ///     Sets the limits of the servo.
+        /// </summary>
+        public void SetLimits(int minimumDutyCycle, int maximumDutyCycle, double minimumAngle, double maximumAngle)
+        {
+            if (minimumDutyCycle < 0) throw new ArgumentOutOfRangeException(nameof(minimumDutyCycle));
+            if (maximumDutyCycle < 0) throw new ArgumentOutOfRangeException(nameof(maximumDutyCycle));
+            if (minimumDutyCycle >= maximumDutyCycle) throw new ArgumentException(nameof(minimumDutyCycle));
+            if (minimumAngle < 0) throw new ArgumentOutOfRangeException(nameof(minimumAngle));
+            if (maximumAngle < 0) throw new ArgumentOutOfRangeException(nameof(maximumAngle));
+            if (minimumAngle >= maximumAngle) throw new ArgumentException(nameof(minimumAngle));
+
+            var pwmController = _pwmPin.Controller;
+            if (!pwmController.ActualFrequency.Equals(50))
+                pwmController.SetDesiredFrequency(50);
+
+            _minAngle = minimumAngle;
+            _maxAngle = maximumAngle;            
+
+            _scale = ((maximumDutyCycle - minimumDutyCycle) /(maximumAngle - minimumAngle));
+            _offset = minimumDutyCycle;
+
+            _limitsSet = true;
+        }
+    }
+
+    public class CustomSoftPwm : IPwmControllerProvider, IDisposable
+    {
+        public void Dispose()
+        {
+            throw new NotImplementedException();
+        }
+
+        public double SetDesiredFrequency(double frequency)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void AcquirePin(int pin)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReleasePin(int pin)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void EnablePin(int pin)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void DisablePin(int pin)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetPulseParameters(int pin, double dutyCycle, bool invertPolarity)
+        {
+            throw new NotImplementedException();
+        }
+
+        public double ActualFrequency { get; }
+        public double MaxFrequency { get; }
+        public double MinFrequency { get; }
+        public int PinCount { get; }
     }
 }
