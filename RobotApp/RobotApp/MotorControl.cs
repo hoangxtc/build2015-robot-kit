@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -8,6 +9,7 @@ using Windows.Devices.Pwm.Provider;
 using Windows.Foundation;
 using Windows.System.Threading;
 using Microsoft.IoT.DeviceCore.Pwm;
+using Microsoft.IoT.DeviceHelpers;
 using Porrey.Uwp.IoT;
 using Porrey.Uwp.IoT.FluentApi;
 using SoftPwm = Microsoft.IoT.Devices.Pwm.SoftPwm;
@@ -479,44 +481,126 @@ namespace RobotApp
 
     public class CustomSoftPwm : IPwmControllerProvider, IDisposable
     {
+        private readonly double _maximumValue;
+        private readonly int _pinCount;
+        private Dictionary<int, ISoftPwm> _pins;
+        private double _actualFrequency;
+
+        private const int MAX_FREQUENCY = 1000;
+        private const int MIN_FREQUENCY = 40;
+
+        public CustomSoftPwm(double maximumValue)
+        {
+            _maximumValue = maximumValue;
+            // Get GPIO
+            var gpioController = GpioController.GetDefault();
+
+            // Make sure we have it
+            if (gpioController == null) { throw new DeviceNotFoundException("GPIO"); }
+
+            // How many pins
+            _pinCount = gpioController.PinCount;
+
+            // Create pin lookup
+            _pins = new Dictionary<int, ISoftPwm>(_pinCount);
+        }
+
         public void Dispose()
         {
-            throw new NotImplementedException();
+            // Dispose each pin
+            lock (_pins)
+            {
+                for (int i = _pinCount - 1; i >= 0; i--)
+                {
+                    if (_pins.ContainsKey(i))
+                    {
+                        _pins[i].Pin.Dispose();
+                        _pins.Remove(i);
+                    }
+                }
+            }
+            _pins = null;
         }
 
         public double SetDesiredFrequency(double frequency)
         {
-            throw new NotImplementedException();
+            _actualFrequency = frequency;
+            return _actualFrequency;
         }
 
         public void AcquirePin(int pin)
         {
-            throw new NotImplementedException();
+            if ((pin < 0) || (pin > (_pinCount - 1))) throw new ArgumentOutOfRangeException(nameof(pin));
+
+            lock (_pins)
+            {
+                if (_pins.ContainsKey(pin)) { throw new UnauthorizedAccessException(); }
+                var softPwm = GpioController.GetDefault().OnPin(pin).AsExclusive().Open().AssignSoftPwm().WithPulseFrequency(_actualFrequency);
+                softPwm.MaximumValue = _maximumValue;
+                _pins[pin] = softPwm;
+            }
         }
 
         public void ReleasePin(int pin)
         {
-            throw new NotImplementedException();
+            if ((pin < 0) || (pin > (_pinCount - 1))) throw new ArgumentOutOfRangeException(nameof(pin));
+
+            lock (_pins)
+            {
+                if (!_pins.ContainsKey(pin)) { throw new UnauthorizedAccessException(); }
+                _pins[pin].Pin.Dispose();
+                _pins.Remove(pin);
+            }
         }
 
         public void EnablePin(int pin)
         {
-            throw new NotImplementedException();
+            if ((pin < 0) || (pin > (_pinCount - 1))) throw new ArgumentOutOfRangeException(nameof(pin));
+
+            lock (_pins)
+            {
+                if (!_pins.ContainsKey(pin)) { throw new UnauthorizedAccessException(); }
+                _pins[pin].StartAsync();
+            }
         }
 
         public void DisablePin(int pin)
         {
-            throw new NotImplementedException();
+            if ((pin < 0) || (pin > (_pinCount - 1))) throw new ArgumentOutOfRangeException(nameof(pin));
+
+            lock (_pins)
+            {
+                if (!_pins.ContainsKey(pin)) { throw new UnauthorizedAccessException(); }
+                _pins[pin].StopAsync();
+            }
         }
 
         public void SetPulseParameters(int pin, double dutyCycle, bool invertPolarity)
         {
-            throw new NotImplementedException();
+            if ((pin < 0) || (pin > (_pinCount - 1))) throw new ArgumentOutOfRangeException(nameof(pin));
+
+            lock (_pins)
+            {
+                if (!_pins.ContainsKey(pin))
+                {
+                    throw new UnauthorizedAccessException();
+                }
+                var softPin = _pins[pin];
+                softPin.Value = !invertPolarity
+                    ? (dutyCycle/100)*softPin.MaximumValue
+                    : (100 - dutyCycle/100)*softPin.MaximumValue;
+            }
+
+            // If duty cycle isn't zero we need to make sure updates are running
+            //if ((dutyCycle != 0) && (!updater.IsStarted)) { updater.Start(); }
         }
 
-        public double ActualFrequency { get; }
-        public double MaxFrequency { get; }
-        public double MinFrequency { get; }
-        public int PinCount { get; }
+        public double ActualFrequency => _actualFrequency;
+
+        public double MaxFrequency => MAX_FREQUENCY;
+
+        public double MinFrequency => MIN_FREQUENCY;
+
+        public int PinCount => _pinCount;
     }
 }
