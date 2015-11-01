@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using Windows.Devices.HumanInterfaceDevice;
 
 namespace RobotApp
@@ -16,6 +18,8 @@ namespace RobotApp
         /// </summary>
         public ControllerVector DirectionVector { get; set; }
 
+        public ButtonStatus ButtonStatus { get; set; }
+
         /// <summary>
         /// Handle to the actual controller HidDevice
         /// </summary>
@@ -29,12 +33,14 @@ namespace RobotApp
         public XboxHidController(HidDevice deviceHandle)
         {
             this.deviceHandle = deviceHandle;
-            deviceHandle.InputReportReceived += inputReportReceived;
+            deviceHandle.InputReportReceived += inputReportReceived;            
             this.DirectionVector = new ControllerVector() { Direction = ControllerDirection.None, Magnitude = 10000 };
             foreach (var direction in Enum.GetValues(typeof(ControllerDirection)))
             {
                 this.MaxMagnitude[(ControllerDirection)direction] = 0;
             }
+
+            ButtonStatus = new ButtonStatus();
         }
 
         /// <summary>
@@ -44,13 +50,13 @@ namespace RobotApp
         /// <param name="args">InputReport received from the controller</param>
         private void inputReportReceived(HidDevice sender, HidInputReportReceivedEventArgs args)
         {
-            int dPad = (int)args.Report.GetNumericControl(0x01, 0x39).Value;
+            int dPad = (int)args.Report.GetNumericControl(0x01, 0x39).Value;            
 
             ControllerVector newVector = new ControllerVector()
             {
                 Direction = (ControllerDirection)dPad,
                 Magnitude = 10000
-            };
+            };            
 
             // DPad has priority over thumb stick, only bother with thumb stick 
             // values if DPad is not providing a value.
@@ -85,6 +91,19 @@ namespace RobotApp
                     this.DirectionVector = newVector;
                     this.DirectionChanged(this.DirectionVector);
                 }
+            }
+
+            var newButtonStatus = new ButtonStatus();
+            foreach (var buttonType in Enum.GetValues(typeof (ButtonType)).Cast<ButtonType>().Where(buttonType => args.Report.GetBooleanControl(0x09, (ushort) buttonType).IsActive))
+            {
+                newButtonStatus.ButtonType = buttonType;
+                newButtonStatus.IsActive = true;
+            }                        
+
+            if (!this.ButtonStatus.Equals(newButtonStatus))
+            {                
+                this.ButtonStatus = newButtonStatus;
+                OnButtonChanged(newButtonStatus);
             }
         }
 
@@ -154,6 +173,13 @@ namespace RobotApp
         /// </summary>
         /// <param name="sender">Direction the controller input changed to</param>
         public event DirectionChangedHandler DirectionChanged;
+
+        public event EventHandler<ButtonStatus>  ButtonChanged;
+
+        protected virtual void OnButtonChanged(ButtonStatus e)
+        {
+            ButtonChanged?.Invoke(this, e);
+        }
     }
 
     public class ControllerVector
@@ -198,7 +224,33 @@ namespace RobotApp
             }
         }
     }
-
+        
     public enum ControllerDirection { None = 0, Up, UpRight, Right, DownRight, Down, DownLeft, Left, UpLeft }
+
+    public class ButtonStatus
+    {
+        public ButtonType ButtonType { get; set; }
+
+        public bool IsActive { get; set; }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            var buttonController = (ButtonStatus) obj;
+            return IsActive == buttonController.IsActive && ButtonType == buttonController.ButtonType;
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                return (IsActive.GetHashCode()*397) ^ (int) ButtonType;
+            }
+        }
+    }
+
+    public enum ButtonType { None = 0, A, B, X, Y, Lb, Rb, Back, Start, Lsb, Rsb }
 
 }

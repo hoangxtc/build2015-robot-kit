@@ -48,7 +48,7 @@
     <DeviceCapability Name="humaninterfacedevice">
       <Device Id="any">
         <Function Type="usage:0001 0004"/>
-        <Function Type="usage:0001 0005"/>
+        <Function Type="usage:0001 0005"/>		
       </Device>
     </DeviceCapability>
   </Capabilities>

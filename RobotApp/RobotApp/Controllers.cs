@@ -2,6 +2,7 @@
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using System.Diagnostics;
+using System.Linq.Expressions;
 using Windows.Devices.Enumeration;
 using Windows.Devices.HumanInterfaceDevice;
 
@@ -182,10 +183,9 @@ namespace RobotApp
 
                 controller = new XboxHidController(hidDevice);
                 controller.DirectionChanged += Controller_DirectionChanged;
+                controller.ButtonChanged += Controller_ButtonChanged;
             }
         }
-
-
 
         public static async void XboxJoystickCheck()
         {
@@ -204,9 +204,49 @@ namespace RobotApp
             Debug.WriteLine("Direction: " + sender.Direction + ", Magnitude: " + sender.Magnitude);
             XBoxToRobotDirection((sender.Magnitude < 2500) ? ControllerDirection.None : sender.Direction, sender.Magnitude);
 
-            MotorCtrl.SpeedValue = sender.Magnitude;
+            MotorCtrl.SpeedValue = sender.Magnitude;            
         }
-    
+
+        private static void Controller_ButtonChanged(object sender, ButtonStatus e)
+        {
+            Debug.WriteLine("Button: " + e.ButtonType + ", IsActive: " + e.IsActive);
+            if (e.IsActive)
+            {
+                XBoxToRobotButton(e.ButtonType);
+            }
+        }
+
+        private static void XBoxToRobotButton(ButtonType buttonType)
+        {
+            switch (buttonType)
+            {
+                case ButtonType.None:                    
+                    break;
+                case ButtonType.A:
+                    break;
+                case ButtonType.B:
+                    break;
+                case ButtonType.X:
+                    break;
+                case ButtonType.Y:
+                    break;
+                case ButtonType.Lb:
+                    break;
+                case ButtonType.Rb:
+                    break;
+                case ButtonType.Back:
+                    break;
+                case ButtonType.Start:
+                    break;
+                case ButtonType.Lsb:
+                    break;
+                case ButtonType.Rsb:
+                    break;
+                default:
+                    break;
+            }
+        }
+
         static void XBoxToRobotDirection(ControllerDirection dir, int magnitude)
         {
             switch (dir)

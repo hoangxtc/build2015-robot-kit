@@ -30,7 +30,7 @@ namespace RobotApp
         } // values selected for thread-safety
         private const int LeftPwmPin = 5;
         private const int RightPwmPin = 6;
-        private const int GripperPwmPin = 19;
+        private const int GripperPwmPin = 25;
         private const int LeftDirectionPin1 = 13;
         private const int LeftDirectionPin2 = 12;
         private const int RightDirectionPin1 = 16;
@@ -99,7 +99,7 @@ namespace RobotApp
                     {
                         _servo.Position = 90;
                         mre.WaitOne(2000);
-                        _servo.Position = 75;
+                        _servo.Position = 30;
                         mre.WaitOne(2000);
                         /*PulseMotor(MotorIds.Left);
                         mre.WaitOne(2);
@@ -237,34 +237,33 @@ namespace RobotApp
             {
                 var gpioController = GpioController.GetDefault();
                 if (null == gpioController) return;
+                var maximumSpeed = 10000;
+                
+                // Create PWM manager
+                var pwmManager = new PwmProviderManager();
 
-                _leftMotor = new Motor(LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2, pwmChannel => gpioController.OnPin(pwmChannel)
-                    .AsExclusive()
-                    .Open()
-                    .AssignSoftPwm()
-                    );
-                _rightMotor = new Motor(RightPwmPin, RightDirectionPin1, RightDirectionPin2, pwmChannel => gpioController.OnPin(pwmChannel)
-                    .AsExclusive()
-                    .Open()
-                    .AssignSoftPwm());
+                // Add providers ~ pwmControllers
+                pwmManager.Providers.Add(new CustomSoftPwm(maximumSpeed));
+                pwmManager.Providers.Add(new SoftPwm());
+
+                // Get the well-known controller collection back
+                var pwmControllers = pwmManager.GetControllersAsync().GetAwaiter().GetResult();
+
+                // Using the first PWM controller
+                var pwmController = pwmControllers.First();
+
+                _leftMotor = new Motor(LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2, maximumSpeed,
+                    pwmChannel => pwmController.OpenPin(pwmChannel));
+
+                _rightMotor = new Motor(RightPwmPin, RightDirectionPin1, RightDirectionPin2, maximumSpeed,
+                    pwmChannel => pwmController.OpenPin(pwmChannel));
 
                 _servo = new Servo(GripperPwmPin, pin =>
                 {
-                    // Create PWM manager
-                    var pwmManager = new PwmProviderManager();
-
-                    // Add providers ~ pwmControllers
-                    pwmManager.Providers.Add(new SoftPwm());
-
-                    // Get the well-known controller collection back
-                    var pwmControllers = pwmManager.GetControllersAsync().GetAwaiter().GetResult();
-
-                    // Using the first PWM controller
-                    var pwmController = pwmControllers.First();
-
+                    var controller = pwmControllers.Last();
                     // Set desired frequency
-                    pwmController.SetDesiredFrequency(50);
-                    return pwmController.OpenPin(pin);
+                    controller.SetDesiredFrequency(50);                    
+                    return controller.OpenPin(pin);
                 });
                 _servo.SetLimits(0.02, 0.24, 0, 180);
 
@@ -336,14 +335,16 @@ namespace RobotApp
 
     public class Motor : IDisposable
     {
+        private readonly int _maximumValue;
         private readonly GpioPin _directionPin1;
         private readonly GpioPin _directionPin2;
-        private readonly ISoftPwm _pwm;
+        private readonly PwmPin _pwmPin;
         private bool _disposed;
         private double _speed;
 
-        internal Motor(int pwmPin, int direction1Pin, int direction2Pin, Func<int, ISoftPwm> funcPwm)
+        internal Motor(int pwmPin, int direction1Pin, int direction2Pin, int maximumValue, Func<int, PwmPin> funcPwm)
         {
+            _maximumValue = maximumValue;
             _speed = 0.0;
             _disposed = false;
 
@@ -354,9 +355,8 @@ namespace RobotApp
             _directionPin1.SetDriveMode(GpioPinDriveMode.Output);
             _directionPin2.SetDriveMode(GpioPinDriveMode.Output);
 
-            _pwm = funcPwm(pwmPin);
-            _pwm.MaximumValue = 10000;
-            _pwm.Start();
+            _pwmPin = funcPwm(pwmPin);            
+            _pwmPin.Start();
         }
 
         /// <summary>
@@ -368,12 +368,12 @@ namespace RobotApp
             get { return _speed; }
             set
             {
-                _pwm.Value = 0.0;
+                _pwmPin.SetActiveDutyCyclePercentage(0.0);
 
                 _directionPin1.Write(value > 0 ? GpioPinValue.High : GpioPinValue.Low);
-                _directionPin2.Write(value > 0 ? GpioPinValue.Low : GpioPinValue.High);
+                _directionPin2.Write(value < 0 ? GpioPinValue.High : GpioPinValue.Low);
 
-                _pwm.Value = Math.Abs(value);
+                _pwmPin.SetActiveDutyCyclePercentage(Math.Abs(value)/ _maximumValue);
 
                 _speed = value;
             }
@@ -390,7 +390,7 @@ namespace RobotApp
         /// </summary>
         public void Start()
         {
-            _pwm.Start();
+            _pwmPin.Start();
         }
 */
 
@@ -399,7 +399,7 @@ namespace RobotApp
         /// </summary>
         public void Stop()
         {
-            _pwm.Value = 0.0;
+            _pwmPin.SetActiveDutyCyclePercentage(0.0);
         }
 
         /// <summary>
@@ -432,9 +432,9 @@ namespace RobotApp
         internal Servo(int pinNumber, Func<int, PwmPin> funcPwmPin)
         {
             _pwmPin = funcPwmPin(pinNumber);
+            _pwmPin.Start();
             _position = 0.0;
             _limitsSet = false;
-            _pwmPin.Start();            
         }
 
         /// <summary>
@@ -449,10 +449,8 @@ namespace RobotApp
                 if (value < _minAngle || value > _maxAngle) throw new ArgumentOutOfRangeException(nameof(value));
 
                 _position = value;
-                if (_pwmPin.IsStarted)
-                {
-                    _pwmPin.SetActiveDutyCyclePercentage(_scale*value + _offset);
-                }
+                _pwmPin.SetActiveDutyCyclePercentage(_scale * value + _offset);
+                Debug.WriteLine($"DutyCycle{_pwmPin.GetActiveDutyCyclePercentage()}:{_scale * value + _offset}");
             }
         }
 
@@ -591,7 +589,7 @@ namespace RobotApp
                 var softPin = _pins[pin];
                 softPin.Value = !invertPolarity
                     ? (dutyCycle)*softPin.MaximumValue
-                    : (1 - dutyCycle)*softPin.MaximumValue;
+                    : (1 - dutyCycle)*softPin.MaximumValue;                
             }
 
             // If duty cycle isn't zero we need to make sure updates are running
