@@ -209,40 +209,53 @@ namespace RobotApp
 
         private static void Controller_ButtonChanged(object sender, ButtonStatus e)
         {
+            FoundLocalControlsWorking = true;
             Debug.WriteLine("Button: " + e.ButtonType + ", IsActive: " + e.IsActive);
             if (e.IsActive)
             {
-                XBoxToRobotButton(e.ButtonType);
+                XBoxToRobotCommand(e.ButtonType);
             }
         }
 
-        private static void XBoxToRobotButton(ButtonType buttonType)
+        private static void XBoxToRobotCommand(ButtonType buttonType)
         {
             switch (buttonType)
             {
-                case ButtonType.None:                    
+                case ButtonType.None:
+                    SetRobotCommand(CtrlCmds.None);
                     break;
                 case ButtonType.A:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.B:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.X:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.Y:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.Lb:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.Rb:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.Back:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.Start:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.Lsb:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 case ButtonType.Rsb:
+                    SetRobotCommand(CtrlCmds.ToggleGripper);
                     break;
                 default:
+                    SetRobotCommand(CtrlCmds.None);
                     break;
             }
         }
@@ -284,7 +297,10 @@ namespace RobotApp
 
         #region ----- general command/control helpers -----
 
-        public enum CtrlCmds { Stop, Forward, Backward, Left, Right, ForwardLeft, ForwardRight, BackLeft, BackRight };
+        public enum CtrlCmds { Stop, Forward, Backward, Left, Right, ForwardLeft, ForwardRight, BackLeft, BackRight,
+            None,
+            ToggleGripper
+        };
         public enum CtrlSpeeds { Min=0, Mid=5000, Max=10000 }
 
         public static long msLastDirectionTime;
@@ -374,6 +390,32 @@ namespace RobotApp
             lastSetCmd = cmd;
         }
 
+        public static void SetRobotCommand(CtrlCmds cmd)
+        {
+            switch (cmd)
+            {
+                case CtrlCmds.None:
+                    break;
+                case CtrlCmds.ToggleGripper:
+                    break;
+                default:
+                    break;
+            }
+
+            if (!MainPage.isRobot)
+            {
+                String sendStr = "[" + (Convert.ToInt32(cmd)).ToString() + "]:" + cmd.ToString();
+                NetworkCmd.SendCommandToRobot(sendStr);
+            }
+            else
+            {
+                if(cmd.Equals(CtrlCmds.ToggleGripper))
+                    MotorCtrl.ToggleGripper();
+            }
+
+            lastSetCmd = cmd;
+        }
+
         private static MotorCtrl.PulseMs lastWTL, lastWTR;
         private static int lastSpeed;
         static void dumpOnDiff(String title)
@@ -406,6 +448,21 @@ namespace RobotApp
                         if (lastHidCheck != FoundLocalControlsWorking) Debug.WriteLine("No local controls yet - using messages.");
                         SetRobotDirection(cmd, (int)CtrlSpeeds.Max);
                     }
+                    lastHidCheck = FoundLocalControlsWorking;
+                }
+                else
+                {
+                    CtrlCmds cmd = (CtrlCmds)id;
+                    if (FoundLocalControlsWorking)
+                    {
+                        if (lastHidCheck != FoundLocalControlsWorking) Debug.WriteLine("LOCAL controls found - skipping messages.");
+                    }
+                    else
+                    {
+                        if (lastHidCheck != FoundLocalControlsWorking) Debug.WriteLine("No local controls yet - using messages.");
+                        SetRobotCommand(cmd);
+                    }
+                    
                     lastHidCheck = FoundLocalControlsWorking;
                 }
             }

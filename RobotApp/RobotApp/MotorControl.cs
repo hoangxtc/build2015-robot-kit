@@ -97,15 +97,7 @@ namespace RobotApp
                     // main motor timing loop
                     while (true)
                     {
-                        _servo.Position = 90;
-                        mre.WaitOne(2000);
-                        _servo.Position = 30;
-                        mre.WaitOne(2000);
-                        /*PulseMotor(MotorIds.Left);
                         mre.WaitOne(2);
-                        PulseMotor(MotorIds.Right);
-                        mre.WaitOne(2);*/
-
                         CheckSystem();
                     }
                 }, WorkItemPriority.High);
@@ -243,7 +235,7 @@ namespace RobotApp
                 var pwmManager = new PwmProviderManager();
 
                 // Add providers ~ pwmControllers
-                pwmManager.Providers.Add(new CustomSoftPwm(maximumSpeed));
+                //pwmManager.Providers.Add(new CustomSoftPwm(maximumSpeed));
                 pwmManager.Providers.Add(new SoftPwm());
 
                 // Get the well-known controller collection back
@@ -262,10 +254,11 @@ namespace RobotApp
                 {
                     var controller = pwmControllers.Last();
                     // Set desired frequency
-                    controller.SetDesiredFrequency(50);                    
+                    //controller.SetDesiredFrequency(50);
                     return controller.OpenPin(pin);
                 });
                 _servo.SetLimits(0.02, 0.24, 0, 180);
+                _servo.Position = 30;
 
                 _statusLedPin = gpioController.OpenPin(ActLedPin);
                 _statusLedPin.SetDriveMode(GpioPinDriveMode.Output);
@@ -331,6 +324,11 @@ namespace RobotApp
             Left,
             Right
         };
+
+        public static void ToggleGripper()
+        {
+            _servo.Position = _servo.Position.Equals(30d) ? 90d : 30d;
+        }
     }
 
     public class Motor : IDisposable
