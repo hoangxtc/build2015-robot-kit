@@ -42,8 +42,8 @@ namespace RobotApp
         private static ulong _ticksPerMs;        
         private static GpioPin _sensorPin;
         private static GpioPin _statusLedPin;
-        public static PulseMs WaitTimeLeft = PulseMs.Stop;
-        public static PulseMs WaitTimeRight = PulseMs.Stop;
+        //public static PulseMs WaitTimeLeft = PulseMs.Stop;
+        //public static PulseMs WaitTimeRight = PulseMs.Stop;
         public static int SpeedValue = 10000;
         private static long _msLastCheckTime;
         private static bool _isBlockSensed;
@@ -97,10 +97,10 @@ namespace RobotApp
                     // main motor timing loop
                     while (true)
                     {
-                        mre.WaitOne(2);
+                        mre.WaitOne(1000);
                         CheckSystem();
                     }
-                }, WorkItemPriority.High);
+                }, WorkItemPriority.High);            
         }
 
         /// <summary>
@@ -258,7 +258,7 @@ namespace RobotApp
                     return controller.OpenPin(pin);
                 });
                 _servo.SetLimits(0.02, 0.24, 0, 180);
-                _servo.Position = 30;
+                _servo.Position = 30f;
 
                 _statusLedPin = gpioController.OpenPin(ActLedPin);
                 _statusLedPin.SetDriveMode(GpioPinDriveMode.Output);
@@ -327,7 +327,7 @@ namespace RobotApp
 
         public static void ToggleGripper()
         {
-            _servo.Position = _servo.Position.Equals(30d) ? 90d : 30d;
+            _servo.Position = _servo.Position.Equals(30f) ? 90f : 30f;
         }
     }
 
@@ -447,8 +447,9 @@ namespace RobotApp
                 if (value < _minAngle || value > _maxAngle) throw new ArgumentOutOfRangeException(nameof(value));
 
                 _position = value;
-                _pwmPin.SetActiveDutyCyclePercentage(_scale * value + _offset);
-                Debug.WriteLine($"DutyCycle{_pwmPin.GetActiveDutyCyclePercentage()}:{_scale * value + _offset}");
+                var dutyCyclePercentage = Math.Round(_scale * value + _offset, 2);
+                _pwmPin.SetActiveDutyCyclePercentage(dutyCyclePercentage);
+                Debug.WriteLine($"DutyCycle:{dutyCyclePercentage}");
             }
         }
 

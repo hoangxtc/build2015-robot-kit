@@ -63,49 +63,52 @@ namespace RobotApp
             {
                 if (MainPage.isRobot)
                 {
-                    DataReader reader = new DataReader(args.Socket.InputStream);
-                    String str = "";
-                    while (true)
+                    using (DataReader reader = new DataReader(args.Socket.InputStream))
                     {
-                        uint len = await reader.LoadAsync(1);
-                        if (len > 0)
+                        string str = "";
+                        while (true)
                         {
-                            byte b = reader.ReadByte();
-                            str += Convert.ToChar(b);
-                            if (b == '.')
+                            uint len = await reader.LoadAsync(1);
+                            if (len > 0)
                             {
-                                Debug.WriteLine("Network Received: '{0}'", str);
-                                Controllers.ParseCtrlMessage(str);
-                                break;
+                                byte b = reader.ReadByte();
+                                str += Convert.ToChar(b);
+                                if (b == '.')
+                                {
+                                    Debug.WriteLine("Network Received: '{0}'", str);
+                                    Controllers.ParseCtrlMessage(str);
+                                    break;
+                                }
                             }
                         }
                     }
                 }
                 else
                 {
-                    String lastStringSent;
-                    while (true)
+                    using (DataWriter writer = new DataWriter(args.Socket.OutputStream))
                     {
-                        DataWriter writer = new DataWriter(args.Socket.OutputStream);
-                        lastStringSent = ctrlStringToSend;
-                        writer.WriteString(lastStringSent);
-                        await writer.StoreAsync();
-                        msLastSendTime = MainPage.stopwatch.ElapsedMilliseconds;
-
-                        // re-send periodically
-                        long msStart = MainPage.stopwatch.ElapsedMilliseconds;
-                        for (; ;)
+                        while (true)
                         {
-                            long msCurrent = MainPage.stopwatch.ElapsedMilliseconds;
-                            if ((msCurrent - msStart) > 3000) break;
-                            if (lastStringSent.CompareTo(ctrlStringToSend) != 0) break;
+                            var lastStringSent = ctrlStringToSend;
+                            writer.WriteString(lastStringSent);
+                            await writer.StoreAsync();
+                            msLastSendTime = MainPage.stopwatch.ElapsedMilliseconds;
+
+                            // re-send periodically
+                            long msStart = MainPage.stopwatch.ElapsedMilliseconds;
+                            for (;;)
+                            {
+                                long msCurrent = MainPage.stopwatch.ElapsedMilliseconds;
+                                if ((msCurrent - msStart) > 3000) break;
+                                if (lastStringSent.CompareTo(ctrlStringToSend) != 0) break;
+                            }
                         }
                     }
                 }
             }
             catch (Exception e)
             {
-                Debug.WriteLine("OnConnection() - " + e.Message);
+                Debug.WriteLine("OnConnection() - " + e.StackTrace);
             }
         }
         #endregion
@@ -218,11 +221,13 @@ namespace RobotApp
             }
 
             try
-            {
-                DataWriter writer = new DataWriter(socket.OutputStream);
-                writer.WriteString(writeStr);
-                await writer.StoreAsync();
-                msLastSendTime = MainPage.stopwatch.ElapsedMilliseconds;
+            {                
+                using (DataWriter writer = new DataWriter(socket.OutputStream))
+                {
+                    writer.WriteString(writeStr);
+                    await writer.StoreAsync();
+                    msLastSendTime = MainPage.stopwatch.ElapsedMilliseconds;
+                }
             }
             catch (Exception exp)
             {
