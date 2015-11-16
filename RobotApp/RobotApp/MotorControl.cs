@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Windows.Devices.Gpio;
 using Windows.Devices.Pwm;
 using Windows.Devices.Pwm.Provider;
@@ -186,38 +187,34 @@ namespace RobotApp
             }
         }
 
-        private static void MoveMotorsForTime(uint ms)
+        private static void DelayForTime(uint ms)
         {
             if (!_gpioInitialized) return;
 
-            var mre = new ManualResetEvent(false);
+            /*var mre = new ManualResetEvent(false);
             var stick = (ulong) MainPage.stopwatch.ElapsedTicks;
             while (true)
             {
                 var delta = (ulong) (MainPage.stopwatch.ElapsedTicks) - stick;
                 if (delta > (ms*_ticksPerMs)) break; // stop motion after given time
-
-                //TODO
-                /*PulseMotor(MotorIds.Left);
-                mre.WaitOne(2);
-                PulseMotor(MotorIds.Right);
-                mre.WaitOne(2);*/
-            }
+                
+            }*/
+            Task.Delay((int) ms);
         }
 
         private static void BackupRobotSequence()
         {
             // stop the robot
             Controllers.SetRobotDirection(Controllers.CtrlCmds.Stop, (int) Controllers.CtrlSpeeds.Max);
-            MoveMotorsForTime(200);
+            DelayForTime(200);
 
             // back away from the obstruction
             Controllers.SetRobotDirection(Controllers.CtrlCmds.Backward, (int) Controllers.CtrlSpeeds.Max);
-            MoveMotorsForTime(300);
+            DelayForTime(300);
 
             // spin 180 degress
             Controllers.SetRobotDirection(Controllers.CtrlCmds.Right, (int) Controllers.CtrlSpeeds.Max);
-            MoveMotorsForTime(800);
+            DelayForTime(800);
 
             // leave in stopped condition
             Controllers.SetRobotDirection(Controllers.CtrlCmds.Stop, (int) Controllers.CtrlSpeeds.Max);

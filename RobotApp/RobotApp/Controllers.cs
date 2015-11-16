@@ -3,6 +3,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using System.Diagnostics;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
 using Windows.Devices.HumanInterfaceDevice;
 using Windows.Storage;
@@ -145,7 +146,7 @@ namespace RobotApp
 
         private static XboxHidController controller;
         private static int lastControllerCount = 0;
-        public static async void XboxJoystickInit()
+        public static async Task XboxJoystickInit()
         {
             try
             {
@@ -202,7 +203,7 @@ namespace RobotApp
             if (deviceInformationCollection.Count != lastControllerCount)
             {
                 lastControllerCount = deviceInformationCollection.Count;
-                XboxJoystickInit();
+                await XboxJoystickInit();
             } 
         }
 

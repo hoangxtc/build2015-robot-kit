@@ -4,6 +4,7 @@ using System.Diagnostics;
 using Windows.UI.Xaml.Controls;
 using Windows.Storage;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace RobotApp
 {
@@ -24,7 +25,7 @@ namespace RobotApp
             stopwatch = new Stopwatch();
             stopwatch.Start();
 
-            GetModeAndStartup();
+            GetModeAndStartup();           
         }
 
         /// <summary>
@@ -86,7 +87,7 @@ namespace RobotApp
             isRobot = (serverHostName.Length > 0);
             ShowStartupStatus();
 
-            Controllers.XboxJoystickInit();
+            await Controllers.XboxJoystickInit();
             NetworkCmd.NetworkInit(serverHostName);
             MotorCtrl.MotorsInit();
             Controllers.SetRobotDirection(Controllers.CtrlCmds.Stop, (int)Controllers.CtrlSpeeds.Max);
