@@ -35,7 +35,7 @@ namespace RobotApp
         private const int LeftDirectionPin1 = 13;
         private const int LeftDirectionPin2 = 12;
         private const int RightDirectionPin1 = 16;
-        private const int RightDirectionPin2 = 26;
+        private const int RightDirectionPin2 = 19;
         private const int SensorPin = 23;
         private const int ActLedPin = 47; // rpi2-its-pin47, rpi-its-pin16
         private const int MaxDebs = 10;
@@ -191,15 +191,15 @@ namespace RobotApp
         {
             if (!_gpioInitialized) return;
 
-            /*var mre = new ManualResetEvent(false);
+            var mre = new ManualResetEvent(false);
             var stick = (ulong) MainPage.stopwatch.ElapsedTicks;
             while (true)
             {
                 var delta = (ulong) (MainPage.stopwatch.ElapsedTicks) - stick;
                 if (delta > (ms*_ticksPerMs)) break; // stop motion after given time
                 
-            }*/
-            Task.Delay((int) ms);
+            }
+            //Task.Delay((int) ms);
         }
 
         private static void BackupRobotSequence()
@@ -241,11 +241,12 @@ namespace RobotApp
                 // Using the first PWM controller
                 var pwmController = pwmControllers.First();
 
+                Func<int, PwmPin> funcPwm = pwmChannel => pwmController.OpenPin(pwmChannel);
                 _leftMotor = new Motor(LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2, maximumSpeed,
-                    pwmChannel => pwmController.OpenPin(pwmChannel));
+                    funcPwm);
 
                 _rightMotor = new Motor(RightPwmPin, RightDirectionPin1, RightDirectionPin2, maximumSpeed,
-                    pwmChannel => pwmController.OpenPin(pwmChannel));
+                    funcPwm);
 
                 _servo = new Servo(GripperPwmPin, pin =>
                 {
