@@ -70,6 +70,18 @@ namespace RobotApp
             UpdateClickStatus();
         }
 
+        private void ToggleGripper_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+        {
+            TouchButton(Controllers.CtrlCmds.ToggleGripper);
+            TouchButton(Controllers.CtrlCmds.None);
+        }
+
+        private static void TouchButton(Controllers.CtrlCmds cmd)
+        {
+            Controllers.FoundLocalControlsWorking = true;
+            Controllers.SetRobotCommand(cmd);
+        }
+
         /// <summary>
         /// Virtual Key input handlers.  Keys directed here from XAML settings in MainPage.XAML
         /// </summary>
@@ -296,6 +308,7 @@ namespace RobotApp
 
         public static long msLastDirectionTime;
         public static CtrlCmds lastSetCmd;
+
         public static void SetRobotDirection(CtrlCmds cmd, int speed)
         {            
             if (speed < (int) CtrlSpeeds.Min) speed = (int) CtrlSpeeds.Min;
@@ -373,8 +386,8 @@ namespace RobotApp
             }
             else
             {
-                MotorCtrl.SpeedMotorLeft = speedMotorLeft;
-                MotorCtrl.SpeedMotorRight = speedMotorRight;
+                MotorCtrl.SpeedMotorLeft = Convert.ToDouble(speedMotorLeft/(int) CtrlSpeeds.Max);
+                MotorCtrl.SpeedMotorRight = Convert.ToDouble(speedMotorRight/(int) CtrlSpeeds.Max);
             }
 
             msLastDirectionTime = MainPage.stopwatch.ElapsedMilliseconds;
@@ -404,11 +417,14 @@ namespace RobotApp
                     MotorCtrl.ToggleGripper();
             }
 
+            msLastDirectionTime = MainPage.stopwatch.ElapsedMilliseconds;
             lastSetCmd = cmd;
         }
 
         private static MotorCtrl.PulseMs lastWTL, lastWTR;
+
         private static int lastSpeed;
+
         static void dumpOnDiff(String title)
         {
             //TODO

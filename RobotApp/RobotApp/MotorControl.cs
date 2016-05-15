@@ -11,6 +11,7 @@ using Windows.Foundation;
 using Windows.System.Threading;
 using Microsoft.IoT.DeviceCore.Pwm;
 using Microsoft.IoT.DeviceHelpers;
+using Microsoft.IoT.Devices.Pwm;
 using Porrey.Uwp.IoT;
 using Porrey.Uwp.IoT.FluentApi;
 using SoftPwm = Microsoft.IoT.Devices.Pwm.SoftPwm;
@@ -29,14 +30,14 @@ namespace RobotApp
             Ms1 = 0,
             Ms2 = 2
         } // values selected for thread-safety
-        private const int LeftPwmPin = 5;
-        private const int RightPwmPin = 6;
-        private const int GripperPwmPin = 25;
-        private const int LeftDirectionPin1 = 13;
-        private const int LeftDirectionPin2 = 12;
-        private const int RightDirectionPin1 = 16;
-        private const int RightDirectionPin2 = 19;
-        private const int SensorPin = 23;
+        private const int LeftPwmPin = 12;
+        private const int RightPwmPin = 13;
+        private const int GripperPwmPin = 18;
+        private const int LeftDirectionPin1 = 23;
+        private const int LeftDirectionPin2 = 22;
+        private const int RightDirectionPin1 = 24;
+        private const int RightDirectionPin2 = 25;
+        private const int SensorPin = 4;
         private const int ActLedPin = 47; // rpi2-its-pin47, rpi-its-pin16
         private const int MaxDebs = 10;
         private static IAsyncAction _workItemThread;
@@ -57,12 +58,12 @@ namespace RobotApp
         private static Motor _rightMotor;
         private static Servo _servo;
 
-        public static int SpeedMotorLeft
+        public static double SpeedMotorLeft
         {
             set { if (_leftMotor != null) _leftMotor.Speed = value; }
         }
 
-        public static int SpeedMotorRight
+        public static double SpeedMotorRight
         {
             set { if (_rightMotor != null) _rightMotor.Speed = value; }
         }
@@ -225,8 +226,7 @@ namespace RobotApp
             try
             {
                 var gpioController = GpioController.GetDefault();
-                if (null == gpioController) return;
-                var maximumSpeed = 10000;
+                if (null == gpioController) return;                
                 
                 // Create PWM manager
                 var pwmManager = new PwmProviderManager();
@@ -234,26 +234,29 @@ namespace RobotApp
                 // Add providers ~ pwmControllers
                 //pwmManager.Providers.Add(new CustomSoftPwm(maximumSpeed));
                 pwmManager.Providers.Add(new SoftPwm());
+                pwmManager.Providers.Add(new PCA9685());
 
                 // Get the well-known controller collection back
                 var pwmControllers = pwmManager.GetControllersAsync().GetAwaiter().GetResult();
 
                 // Using the first PWM controller
-                var pwmController = pwmControllers.First();
+                PwmController softPwmController = pwmControllers.First();
 
-                Func<int, PwmPin> funcPwm = pwmChannel => pwmController.OpenPin(pwmChannel);
-                _leftMotor = new Motor(LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2, maximumSpeed,
-                    funcPwm);
+                Func<int, PwmPin> funcPwm = pwmChannel => softPwmController.OpenPin(pwmChannel);
+                Func<int, GpioPin> funcGpio = gpioPin => gpioController.OpenPin(gpioPin);
+                _leftMotor = new Motor(LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2,
+                    funcPwm, funcGpio);
 
-                _rightMotor = new Motor(RightPwmPin, RightDirectionPin1, RightDirectionPin2, maximumSpeed,
-                    funcPwm);
+                _rightMotor = new Motor(RightPwmPin, RightDirectionPin1, RightDirectionPin2,
+                    funcPwm, funcGpio);
 
                 _servo = new Servo(GripperPwmPin, pin =>
                 {
-                    var controller = pwmControllers.Last();
+                    var controller = pwmControllers.Last();                    
                     // Set desired frequency
                     //controller.SetDesiredFrequency(50);
-                    return controller.OpenPin(pin);
+                    return controller.OpenPin(0);// For PCA9685
+                    //return controller.OpenPin(pin);
                 });
                 _servo.SetLimits(0.02, 0.24, 0, 180);
                 _servo.Position = 30f;
@@ -331,27 +334,24 @@ namespace RobotApp
 
     public class Motor : IDisposable
     {
-        private readonly int _maximumValue;
         private readonly GpioPin _directionPin1;
         private readonly GpioPin _directionPin2;
         private readonly PwmPin _pwmPin;
         private bool _disposed;
         private double _speed;
 
-        internal Motor(int pwmPin, int direction1Pin, int direction2Pin, int maximumValue, Func<int, PwmPin> funcPwm)
+        internal Motor(int pwmPin, int direction1Pin, int direction2Pin, Func<int, PwmPin> funcPwm, Func<int, GpioPin> funcGpio)
         {
-            _maximumValue = maximumValue;
             _speed = 0.0;
             _disposed = false;
 
-            var gpioController = GpioController.GetDefault();
-            _directionPin1 = gpioController.OpenPin(direction1Pin);
-            _directionPin2 = gpioController.OpenPin(direction2Pin);
+            _directionPin1 = funcGpio(direction1Pin);
+            _directionPin2 = funcGpio(direction2Pin);
 
             _directionPin1.SetDriveMode(GpioPinDriveMode.Output);
             _directionPin2.SetDriveMode(GpioPinDriveMode.Output);
 
-            _pwmPin = funcPwm(pwmPin);            
+            _pwmPin = funcPwm(pwmPin);
             _pwmPin.Start();
         }
 
@@ -364,12 +364,12 @@ namespace RobotApp
             get { return _speed; }
             set
             {
-                _pwmPin.SetActiveDutyCyclePercentage(0.0);
+                _pwmPin.Stop();
 
                 _directionPin1.Write(value > 0 ? GpioPinValue.High : GpioPinValue.Low);
                 _directionPin2.Write(value < 0 ? GpioPinValue.High : GpioPinValue.Low);
 
-                _pwmPin.SetActiveDutyCyclePercentage(Math.Abs(value)/ _maximumValue);
+                _pwmPin.SetActiveDutyCyclePercentage(Math.Abs(value));
 
                 _speed = value;
             }
@@ -425,12 +425,12 @@ namespace RobotApp
         private double _position;
         private double _scale;
 
-        internal Servo(int pinNumber, Func<int, PwmPin> funcPwmPin)
+        internal Servo(int pwmPin, Func<int, PwmPin> funcPwm)
         {
-            _pwmPin = funcPwmPin(pinNumber);
-            _pwmPin.Start();
             _position = 0.0;
             _limitsSet = false;
+            _pwmPin = funcPwm(pwmPin);            
+            _pwmPin.Start();
         }
 
         /// <summary>
