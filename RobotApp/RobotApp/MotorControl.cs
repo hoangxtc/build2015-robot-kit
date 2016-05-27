@@ -54,8 +54,8 @@ namespace RobotApp
         private static int[] _debounceValues;
         private static int[] _debounceCounts;
         private static int[] _debounceLast;
-        private static Motor _leftMotor;
-        private static Motor _rightMotor;
+        private static IMotor _leftMotor;
+        private static IMotor _rightMotor;
         private static Servo _servo;
 
         public static double SpeedMotorLeft
@@ -240,24 +240,17 @@ namespace RobotApp
                 var pwmControllers = pwmManager.GetControllersAsync().GetAwaiter().GetResult();
 
                 // Using the first PWM controller
-                PwmController softPwmController = pwmControllers.First();
+                var softPwmController = pwmControllers.First();
+                var pwmController = pwmControllers.Last();
 
-                Func<int, PwmPin> funcPwm = pwmChannel => softPwmController.OpenPin(pwmChannel);
-                Func<int, GpioPin> funcGpio = gpioPin => gpioController.OpenPin(gpioPin);
-                _leftMotor = new Motor(LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2,
-                    funcPwm, funcGpio);
+/*                _leftMotor = new Motor(softPwmController, LeftPwmPin, LeftDirectionPin1, LeftDirectionPin2);
+                _rightMotor = new Motor(softPwmController, RightPwmPin, RightDirectionPin1, RightDirectionPin2);*/
+                _leftMotor = new PwmMotor(pwmController, 8, 9, 10);
+                _rightMotor = new PwmMotor(pwmController, 13, 12, 11);
 
-                _rightMotor = new Motor(RightPwmPin, RightDirectionPin1, RightDirectionPin2,
-                    funcPwm, funcGpio);
-
-                _servo = new Servo(GripperPwmPin, pin =>
-                {
-                    var controller = pwmControllers.Last();                    
-                    // Set desired frequency
-                    //controller.SetDesiredFrequency(50);
-                    return controller.OpenPin(0);// For PCA9685
-                    //return controller.OpenPin(pin);
-                });
+                //_servo = new Servo(pwmControllers.First(), GripperPwmPin);
+                
+                _servo = new Servo(pwmController, 0);
                 _servo.SetLimits(0.02, 0.24, 0, 180);
                 _servo.Position = 30f;
 
@@ -332,27 +325,19 @@ namespace RobotApp
         }
     }
 
-    public class Motor : IDisposable
+    public abstract class PwmMotorBase : IMotor, IDisposable
     {
-        private readonly GpioPin _directionPin1;
-        private readonly GpioPin _directionPin2;
-        private readonly PwmPin _pwmPin;
-        private bool _disposed;
+        public PwmController PwmController { get; set; }
+        protected readonly PwmPin PwmPin;        
         private double _speed;
+        protected bool Disposed { get; set; }
 
-        internal Motor(int pwmPin, int direction1Pin, int direction2Pin, Func<int, PwmPin> funcPwm, Func<int, GpioPin> funcGpio)
+        protected PwmMotorBase(PwmController pwmController, int pwmPin)
         {
-            _speed = 0.0;
-            _disposed = false;
-
-            _directionPin1 = funcGpio(direction1Pin);
-            _directionPin2 = funcGpio(direction2Pin);
-
-            _directionPin1.SetDriveMode(GpioPinDriveMode.Output);
-            _directionPin2.SetDriveMode(GpioPinDriveMode.Output);
-
-            _pwmPin = funcPwm(pwmPin);
-            _pwmPin.Start();
+            if (pwmController == null) throw new ArgumentNullException(nameof(pwmController));
+            PwmController = pwmController;
+            PwmPin = PwmController.OpenPin(pwmPin);
+            PwmPin.Start();
         }
 
         /// <summary>
@@ -364,55 +349,123 @@ namespace RobotApp
             get { return _speed; }
             set
             {
-                _pwmPin.Stop();
+                PwmPin.SetActiveDutyCyclePercentage(0);
 
-                _directionPin1.Write(value > 0 ? GpioPinValue.High : GpioPinValue.Low);
-                _directionPin2.Write(value < 0 ? GpioPinValue.High : GpioPinValue.Low);
+                UpdateDirection(value);
 
-                _pwmPin.SetActiveDutyCyclePercentage(Math.Abs(value));
+                PwmPin.SetActiveDutyCyclePercentage(Math.Abs(value));
 
                 _speed = value;
             }
         }
 
         /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="value"></param>
+        protected abstract void UpdateDirection(double value);
+
+        /// <summary>
         ///     Disposes of the object releasing control the pins.
         /// </summary>
-        public void Dispose() => Dispose(true);
+        public abstract void Dispose();
+    }
 
-/*
-        /// <summary>
-        ///     Starts the motor.
-        /// </summary>
-        public void Start()
-        {
-            _pwmPin.Start();
-        }
-*/
+    public sealed class PwmMotor : PwmMotorBase
+    {
+        private readonly PwmPin _directionPin1;
+        private readonly PwmPin _directionPin2;
 
-        /// <summary>
-        ///     Stops the motor.
-        /// </summary>
-        public void Stop()
+        public PwmMotor(PwmController pwmController, int pwmPin, int direction1Pin, int direction2Pin) : base(pwmController, pwmPin)
         {
-            _pwmPin.SetActiveDutyCyclePercentage(0.0);
+            _directionPin1 = PwmController.OpenPin(direction1Pin);
+            _directionPin2 = PwmController.OpenPin(direction2Pin);
+            _directionPin1.Start();
+            _directionPin2.Start();
         }
+
+        protected override void UpdateDirection(double value)
+        {
+            if (value > 0)
+            {
+                _directionPin1.SetActiveDutyCyclePercentage(1);                
+                _directionPin2.SetActiveDutyCyclePercentage(0);
+            }
+            else
+            {
+                _directionPin1.SetActiveDutyCyclePercentage(0);
+                _directionPin2.SetActiveDutyCyclePercentage(1);
+            }
+        }
+
+        public override void Dispose() => Dispose(true);
 
         /// <summary>
         ///     Disposes of the object releasing control the pins.
         /// </summary>
         /// <param name="disposing">Whether or not this method is called from Dispose().</param>
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
-            if (_disposed) return;
+            if (Disposed) return;
+
             if (disposing)
             {
+                PwmPin.Dispose();
                 _directionPin1.Dispose();
                 _directionPin2.Dispose();
             }
 
-            _disposed = true;
+            Disposed = true;
         }
+    }
+
+    public sealed class Motor : PwmMotorBase
+    {
+        private readonly GpioPin _directionPin1;
+        private readonly GpioPin _directionPin2;        
+
+        internal Motor(PwmController pwmController, int pwmPin, int direction1Pin, int direction2Pin) : base(pwmController, pwmPin)
+        {
+            var gpioController = GpioController.GetDefault();
+            _directionPin1 = gpioController.OpenPin(direction1Pin);
+            _directionPin2 = gpioController.OpenPin(direction2Pin);
+            _directionPin1.SetDriveMode(GpioPinDriveMode.Output);
+            _directionPin2.SetDriveMode(GpioPinDriveMode.Output);
+        }
+
+        protected override void UpdateDirection(double value)
+        {
+            _directionPin1.Write(value > 0 ? GpioPinValue.High : GpioPinValue.Low);
+            _directionPin2.Write(value < 0 ? GpioPinValue.High : GpioPinValue.Low);
+        }
+
+        /// <summary>
+        ///     Disposes of the object releasing control the pins.
+        /// </summary>
+        public override void Dispose() => Dispose(true);
+
+        /// <summary>
+        ///     Disposes of the object releasing control the pins.
+        /// </summary>
+        /// <param name="disposing">Whether or not this method is called from Dispose().</param>
+        private void Dispose(bool disposing)
+        {
+            if (Disposed) return;
+
+            if (disposing)
+            {
+                PwmPin.Dispose();
+                _directionPin1.Dispose();
+                _directionPin2.Dispose();
+            }
+
+            Disposed = true;
+        }
+    }
+
+    public interface IMotor
+    {
+        double Speed { get; set; }
     }
 
     public class Servo
@@ -425,11 +478,11 @@ namespace RobotApp
         private double _position;
         private double _scale;
 
-        internal Servo(int pwmPin, Func<int, PwmPin> funcPwm)
+        internal Servo(PwmController pwmController, int pwmPin)
         {
             _position = 0.0;
             _limitsSet = false;
-            _pwmPin = funcPwm(pwmPin);            
+            _pwmPin = pwmController.OpenPin(pwmPin);
             _pwmPin.Start();
         }
 
